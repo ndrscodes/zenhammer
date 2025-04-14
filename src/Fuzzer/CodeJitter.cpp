@@ -117,7 +117,7 @@ void CodeJitter::jit_strict(
   auto sync_bank = DRAMAddr::translate_bank(0, 1, hammer_bank);
   auto sync_ref_initial_aggr = DRAMAddr(sync_bank, 0, 0, /* mapping_id */ 1);
 
-  sync_ref_nonrepeating(sync_ref_initial_aggr, DRAMConfig::get().get_sync_ref_threshold(), a);
+  //sync_ref_nonrepeating(sync_ref_initial_aggr, DRAMConfig::get().get_sync_ref_threshold(), a);
 
   // ------- part 2: perform hammering ---------------------------------------------------------------------------------
 
@@ -192,7 +192,7 @@ void CodeJitter::jit_strict(
 
   // ------- part 3: synchronize with the end  -----------------------------------------------------------------------
 
-  sync_ref_nonrepeating(sync_ref_initial_aggr, DRAMConfig::get().get_sync_ref_threshold(), a);
+  //sync_ref_nonrepeating(sync_ref_initial_aggr, DRAMConfig::get().get_sync_ref_threshold(), a);
 
   a.jmp(for_begin);
   a.bind(for_end);

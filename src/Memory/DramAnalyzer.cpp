@@ -182,20 +182,20 @@ size_t DramAnalyzer::find_sync_ref_threshold() {
                         aggressors, initial_sync_addr, sync_ref_threshold);
 
     // 32 iterations.
-    // for (size_t i = 0; i < 32; i++) {
-    //   RefSyncData data;
-    //   jitter.run_ref_sync(&data);
-    //   if (data.first_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-    //     missed_refs++;
-    //   }
-    //   if (data.second_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-    //     missed_refs++;
-    //   }
-    //   if (data.last_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-    //     missed_refs++;
-    //   }
-    //   total_synced_refs += 3;
-    // }
+    for (size_t i = 0; i < 32; i++) {
+      RefSyncData data;
+      jitter.run_ref_sync(&data);
+      if (data.first_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+        missed_refs++;
+      }
+      if (data.second_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+        missed_refs++;
+      }
+      if (data.last_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+        missed_refs++;
+      }
+      total_synced_refs += 3;
+    }
 
     jitter.cleanup();
 
@@ -236,7 +236,7 @@ void DramAnalyzer::check_sync_ref_threshold(size_t sync_ref_threshold) {
     jitter.jit_ref_sync(FLUSHING_STRATEGY::EARLIEST_POSSIBLE, FENCING_STRATEGY::OMIT_FENCING,
                         aggressors, initial_sync_addr, sync_ref_threshold);
 
-    size_t total_runs = 0;
+    size_t total_runs = 1;
     size_t missed_refs = 0;
 
     size_t second_tsc_sum = 0;
