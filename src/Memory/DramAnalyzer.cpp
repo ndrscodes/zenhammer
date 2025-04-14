@@ -182,20 +182,20 @@ size_t DramAnalyzer::find_sync_ref_threshold() {
                         aggressors, initial_sync_addr, sync_ref_threshold);
 
     // 32 iterations.
-    for (size_t i = 0; i < 32; i++) {
-      RefSyncData data;
-      jitter.run_ref_sync(&data);
-      if (data.first_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
-      if (data.second_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
-      if (data.last_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
-      total_synced_refs += 3;
-    }
+    // for (size_t i = 0; i < 32; i++) {
+    //   RefSyncData data;
+    //   jitter.run_ref_sync(&data);
+    //   if (data.first_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+    //     missed_refs++;
+    //   }
+    //   if (data.second_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+    //     missed_refs++;
+    //   }
+    //   if (data.last_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+    //     missed_refs++;
+    //   }
+    //   total_synced_refs += 3;
+    // }
 
     jitter.cleanup();
 
@@ -247,28 +247,28 @@ void DramAnalyzer::check_sync_ref_threshold(size_t sync_ref_threshold) {
     uint32_t last_tsc_min = -1;
     uint32_t last_tsc_max = 0;
 
-    // 32 iterations.
-    for (size_t i = 0; i < 32; i++) {
-      RefSyncData data;
-      jitter.run_ref_sync(&data);
-      if (data.first_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
-      if (data.second_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
-      if (data.last_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
+    // // 32 iterations.
+    // for (size_t i = 0; i < 32; i++) {
+    //   RefSyncData data;
+    //   jitter.run_ref_sync(&data);
+    //   if (data.first_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+    //     missed_refs++;
+    //   }
+    //   if (data.second_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+    //     missed_refs++;
+    //   }
+    //   if (data.last_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
+    //     missed_refs++;
+    //   }
 
-      total_runs++;
-      second_tsc_sum += data.second_sync_tsc_delta;
-      last_tsc_sum += data.last_sync_tsc_delta;
-      second_tsc_min = std::min(second_tsc_min, data.second_sync_tsc_delta);
-      second_tsc_max = std::max(second_tsc_max, data.second_sync_tsc_delta);
-      last_tsc_min = std::min(last_tsc_min, data.last_sync_tsc_delta);
-      last_tsc_max = std::max(last_tsc_max, data.last_sync_tsc_delta);
-    }
+    //   total_runs++;
+    //   second_tsc_sum += data.second_sync_tsc_delta;
+    //   last_tsc_sum += data.last_sync_tsc_delta;
+    //   second_tsc_min = std::min(second_tsc_min, data.second_sync_tsc_delta);
+    //   second_tsc_max = std::max(second_tsc_max, data.second_sync_tsc_delta);
+    //   last_tsc_min = std::min(last_tsc_min, data.last_sync_tsc_delta);
+    //   last_tsc_max = std::max(last_tsc_max, data.last_sync_tsc_delta);
+    // }
 
     jitter.cleanup();
 
