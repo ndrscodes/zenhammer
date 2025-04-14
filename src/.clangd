@@ -1,0 +1,2 @@
+CompileFlags:
+  Add: [-msse2, -Wall, -I../include, -I../_deps/]
