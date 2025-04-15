@@ -376,7 +376,7 @@ void CodeJitter::jit_ref_sync(
 
   // Initialize ACT count.
   assembler.mov(asmjit::x86::edx, 0);
-  sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
+  //sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
   // Move ACT count to %r9d to store it for later use.
   assembler.mov(asmjit::x86::r9d, asmjit::x86::edx);
 
@@ -399,7 +399,7 @@ void CodeJitter::jit_ref_sync(
   // Previous timestamp is still in %r8d.
   // Initialize ACT count.
   assembler.mov(asmjit::x86::edx, 0);
-  sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
+  //sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
   // Move ACT count to %r9d to store it for later use.
   assembler.mov(asmjit::x86::r9d, asmjit::x86::edx);
 
@@ -429,7 +429,7 @@ void CodeJitter::jit_ref_sync(
 
   // Initialize ACT count.
   assembler.mov(asmjit::x86::edx, 0);
-  sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
+  //sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
   // Move ACT count to %r9d to store it for later use.
   assembler.mov(asmjit::x86::r9d, asmjit::x86::edx);
 
