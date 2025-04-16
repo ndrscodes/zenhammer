@@ -129,7 +129,14 @@ void PatternAddressMapper::randomize_addresses(FuzzingParameterSet &fuzzing_para
 
       assignment_trial_cnt = 0;
       occupied_rows.insert(row);
+      
       aggressor_to_addr.insert(std::make_pair(current_agg.id, DRAMAddr(static_cast<size_t>(bank_no), row, 0)));
+    }
+
+    if(aggressor_to_addr.size() > 2) {
+      int middle = aggressor_to_addr.size() / 2;
+      size_t bank = aggressor_to_addr[middle].bank + 1 % DRAMConfig::get().banks();
+      aggressor_to_addr[middle].bank = bank;
     }
   }
 
