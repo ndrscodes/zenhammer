@@ -134,10 +134,13 @@ void PatternAddressMapper::randomize_addresses(FuzzingParameterSet &fuzzing_para
     }
   }
   
-  if(aggressor_to_addr.size() > 2) {
-    int middle = aggressor_to_addr.size() / 2;
-    size_t bank = aggressor_to_addr[middle].bank + 1 % DRAMConfig::get().banks();
-    aggressor_to_addr[middle].bank = bank;
+  const uint8_t BANK_CHANGE_AFTER_N = 4;
+  for(size_t i = 0; i < aggressor_to_addr.size(); i++) {
+    if(i % BANK_CHANGE_AFTER_N == 0) {
+      size_t current_bank = aggressor_to_addr[i].bank;
+      current_bank = (current_bank + 1) % DRAMConfig::get().banks();
+      aggressor_to_addr[i].bank = current_bank;
+    }
   }
 
   // determine victim rows
