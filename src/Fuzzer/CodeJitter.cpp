@@ -117,7 +117,7 @@ void CodeJitter::jit_strict(
   auto sync_bank = DRAMAddr::translate_bank(0, 1, hammer_bank);
   auto sync_ref_initial_aggr = DRAMAddr(sync_bank, 0, 0, /* mapping_id */ 1);
 
-  //sync_ref_nonrepeating(sync_ref_initial_aggr, DRAMConfig::get().get_sync_ref_threshold(), a);
+  sync_ref_nonrepeating(sync_ref_initial_aggr, DRAMConfig::get().get_sync_ref_threshold(), a);
 
   // ------- part 2: perform hammering ---------------------------------------------------------------------------------
 
@@ -192,7 +192,7 @@ void CodeJitter::jit_strict(
 
   // ------- part 3: synchronize with the end  -----------------------------------------------------------------------
 
-  //sync_ref_nonrepeating(sync_ref_initial_aggr, DRAMConfig::get().get_sync_ref_threshold(), a);
+  sync_ref_nonrepeating(sync_ref_initial_aggr, DRAMConfig::get().get_sync_ref_threshold(), a);
 
   a.jmp(for_begin);
   a.bind(for_end);
@@ -376,7 +376,7 @@ void CodeJitter::jit_ref_sync(
 
   // Initialize ACT count.
   assembler.mov(asmjit::x86::edx, 0);
-  //sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
+  sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
   // Move ACT count to %r9d to store it for later use.
   assembler.mov(asmjit::x86::r9d, asmjit::x86::edx);
 
@@ -399,7 +399,7 @@ void CodeJitter::jit_ref_sync(
   // Previous timestamp is still in %r8d.
   // Initialize ACT count.
   assembler.mov(asmjit::x86::edx, 0);
-  //sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
+  sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
   // Move ACT count to %r9d to store it for later use.
   assembler.mov(asmjit::x86::r9d, asmjit::x86::edx);
 
@@ -429,7 +429,7 @@ void CodeJitter::jit_ref_sync(
 
   // Initialize ACT count.
   assembler.mov(asmjit::x86::edx, 0);
-  //sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
+  sync_ref_nonrepeating(sync_ref_initial_aggr, sync_ref_threshold, assembler);
   // Move ACT count to %r9d to store it for later use.
   assembler.mov(asmjit::x86::r9d, asmjit::x86::edx);
 
