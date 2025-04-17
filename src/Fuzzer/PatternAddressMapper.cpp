@@ -134,7 +134,7 @@ void PatternAddressMapper::randomize_addresses(FuzzingParameterSet &fuzzing_para
     }
   }
   
-  const uint8_t BANK_CHANGE_AFTER_N = 2;
+  const uint8_t BANK_CHANGE_AFTER_N = 4;
   for(size_t i = 0; i < aggressor_to_addr.size(); i++) {
     if(i % BANK_CHANGE_AFTER_N == 0) {
       size_t current_bank = aggressor_to_addr[i].bank;
