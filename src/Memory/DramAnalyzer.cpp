@@ -3,10 +3,102 @@
 #include "Fuzzer/CodeJitter.hpp"
 #include "Memory/DRAMAddr.hpp"
 #include "Memory/DRAMConfig.hpp"
+#include <cmath>
+#include <x86intrin.h>
 
 #include <cassert>
 #include <random>
 #include <unordered_set>
+
+const size_t N_MEASUREMENTS = 300000;
+
+void take_measurements(measurement* arr, size_t n, volatile char* row) {
+  uint32_t tsc_aux;
+  for(int i = 0; i < n; i++) {
+    _mm_mfence(); 
+    uint64_t start = __rdtscp(&tsc_aux);
+    _mm_lfence();
+
+    *row;
+
+    _mm_lfence();
+    uint64_t end = __rdtscp(&tsc_aux);
+
+    arr[i].duration = end - start;
+    arr[i].ts = end;
+    
+    _mm_clflush((void*)row);
+  }
+}
+
+int compare_int( const void* a, const void* b )
+{
+  if( *(uint64_t*)a == *(uint64_t*)b ) return 0;
+  return *(uint64_t*)a < *(uint64_t*)b ? -1 : 1;
+}
+
+uint64_t median(uint64_t arr[], size_t n) {
+  uint64_t* cpy = (uint64_t*)malloc(n * sizeof(uint64_t));
+  memcpy(cpy, arr, n * sizeof(uint64_t));
+  qsort(cpy, n, sizeof(uint64_t), compare_int);
+  uint64_t med = *(cpy + n / 2);
+  free(cpy);
+  return med;
+}
+
+uint64_t find_threshold_new(measurement times[], size_t n) {
+  uint64_t sum = 0;
+
+  for(int i = 0; i < N_MEASUREMENTS; i++) {
+    sum += times[i].duration;
+  }
+
+  double avg = (double)sum / N_MEASUREMENTS;
+  printf("the average measurement duration was %f ns based on %lu measurements and a sum of %lu, determining refresh interval...\n", avg, N_MEASUREMENTS, sum);
+
+  uint64_t peaks[N_MEASUREMENTS];
+  size_t npeaks = 0;
+  for(size_t i = 0; i < N_MEASUREMENTS; i++) {
+    if(times[i].duration > avg * 1.02) {
+      peaks[npeaks++] = times[i].duration;
+    }
+  }
+  printf("found %lu peaks.\n", npeaks);
+
+  uint64_t med = median(peaks, npeaks);
+  printf("median peak duration seems to be %lu ns\n", med);
+  return avg + ((med - avg) / 2);
+}
+
+double_t avg_trefi(measurement times[], size_t n) {
+  uint64_t threshold = find_threshold_new(times, n);
+  uint64_t lpeak = 0;
+  uint64_t peak_sum = 0;
+  uint64_t npeaks = 0;
+  for(int i = 0; i < n; i++) {
+    if(times[i].duration > threshold) {
+      npeaks++;
+      if(lpeak != 0) {
+        peak_sum += times[i].ts - lpeak;
+      }
+      lpeak = times[i].ts;
+    }
+  }
+
+  return peak_sum / (double_t)npeaks;
+}
+
+measurement* measure(volatile char* base)
+{
+  measurement times[N_MEASUREMENTS];
+
+  //used as a preparation period for the OS to finish scheduling the program
+  take_measurements(times, N_MEASUREMENTS / 10, base);
+  sched_yield();
+  take_measurements(times, N_MEASUREMENTS, base);
+
+  return times;
+}
 
 void DramAnalyzer::find_threshold() {
   assert(threshold == (size_t)-1 && "find_threshold() has not been called yet.");
@@ -172,46 +264,13 @@ size_t DramAnalyzer::find_sync_ref_threshold() {
 
   // Prepare REF sync address.
   DRAMAddr initial_sync_addr(1, 0, 0);
+  measurement times[N_MEASUREMENTS];
+  take_measurements(times, N_MEASUREMENTS / 10, (volatile char *)initial_sync_addr.to_virt());
+  sched_yield();
+  take_measurements(times, N_MEASUREMENTS, (volatile char *)initial_sync_addr.to_virt());
   // NOTE: This needs to be in the same rank, but a different bank w.r.t. the aggressors.
-
-  for (size_t sync_ref_threshold = 4000; sync_ref_threshold >= 800; sync_ref_threshold -= 200) {
-    size_t total_synced_refs = 0;
-    size_t missed_refs = 0;
-
-    jitter.jit_ref_sync(FLUSHING_STRATEGY::EARLIEST_POSSIBLE, FENCING_STRATEGY::OMIT_FENCING,
-                        aggressors, initial_sync_addr, sync_ref_threshold);
-
-    // 32 iterations.
-    for (size_t i = 0; i < 32; i++) {
-      RefSyncData data;
-      jitter.run_ref_sync(&data);
-      if (data.first_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
-      if (data.second_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
-      if (data.last_sync_act_count == CodeJitter::SYNC_REF_NUM_AGGRS) {
-        missed_refs++;
-      }
-      total_synced_refs += 3;
-    }
-
-    jitter.cleanup();
-
-    Logger::log_data(format_string("sync_ref_threshold = %zu, missed_refs = %zu", sync_ref_threshold, missed_refs));
-
-    // Allow one missed REF due to noise.
-    if (missed_refs <= 1) {
-      // Add a margin for safety.
-      sync_ref_threshold -= 100;
-      Logger::log_info(format_string("Choosing sync_ref_threshold = %zu.", sync_ref_threshold));
-      return sync_ref_threshold;
-    }
-  }
-
-  Logger::log_error("Error: Could not determine sync_ref_threshold.");
-  exit(EXIT_FAILURE);
+  size_t t = find_threshold_new(times, N_MEASUREMENTS);
+  return t;
 }
 
 void DramAnalyzer::check_sync_ref_threshold(size_t sync_ref_threshold) {
