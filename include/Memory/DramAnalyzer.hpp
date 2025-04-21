@@ -11,6 +11,10 @@
 #include <vector>
 
 #include "Utilities/AsmPrimitives.hpp"
+typedef struct {
+  uint64_t ts;
+  uint64_t duration;
+} measurement;
 
 class DramAnalyzer {
  private:
