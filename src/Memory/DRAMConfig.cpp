@@ -1196,11 +1196,11 @@ void DRAMConfig::select_config(Microarchitecture uarch, int ranks, int bank_grou
     selected_config->bank_shift = 26;
     selected_config->bank_mask = 0b1111;
     // 11 row bits (inside 256 MB)
-    selected_config->row_shift = 14;
-    selected_config->row_mask = 0b00000000000000111111111111;
+    selected_config->row_shift = 0;
+    selected_config->row_mask = 0b000000000000001111111111111111;
     // 13 column bits
-    selected_config->column_shift = 0;
-    selected_config->column_mask = 0b000000000000000011111111111111;
+    selected_config->column_shift = 16;
+    selected_config->column_mask = 0b000000000000000001111111111;
 
     printf("USING ZEN3 MODIFIED CONFIG\n");
 
@@ -1211,7 +1211,7 @@ void DRAMConfig::select_config(Microarchitecture uarch, int ranks, int bank_grou
           0b000100010001010000000000000000,
           0b100010001000101000000000000000,
           0b010001000100000100000000000000,
-          0b000000000000000010000000000000,
+          0b001000100010000011111111000000,
           0b000000000000000001000000000000,
           0b000000000000000000100000000000,
           0b000000000000000000010000000000,
@@ -1256,7 +1256,7 @@ void DRAMConfig::select_config(Microarchitecture uarch, int ranks, int bank_grou
           0b100000000000000000001000100010,
           0b010000000000000001000100010001,
           0b001000000000000000100010001000,
-          0b000100000000000000000000000000,
+          0b000111111110000000010001000100,
           0b000010000000000000000000000000,
           0b000001000000000000000000000000,
           0b000000100000000000000000000000,
@@ -1270,6 +1270,7 @@ void DRAMConfig::select_config(Microarchitecture uarch, int ranks, int bank_grou
           0b000000000000001000000000000000,
           0b000000000000000100000000000000,
           0b000000000000000010000000000000
+
       };
     } else {
       selected_config->dram_matrix = {
