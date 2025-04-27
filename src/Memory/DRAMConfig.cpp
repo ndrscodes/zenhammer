@@ -1,6 +1,6 @@
 #include "GlobalDefines.hpp"
-#include "DRAMConfig.hpp"
-#include "Logger.hpp"
+#include "Memory/DRAMConfig.hpp"
+#include "Utilities/Logger.hpp"
 
 #include <array>
 #include <cassert>
