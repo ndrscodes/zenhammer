@@ -16,15 +16,17 @@
 
 void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled) {
   Logger::log_info("[HAMMER TREAD] starting!");
-  
+
+  size_t acts = 0;
   while(!cancelled) {
     for(auto p : hammer_pattern) {
       clflushopt(p);
       *p;
+      acts++;
     }
   }
 
-  Logger::log_info("[HAMMER THREAD] finished hammering.");
+  Logger::log_info(format_string("[HAMMER THREAD] finished hammering. managed to create %lu activations", acts));
 }
 
 std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t n_aggressors_per_bank, size_t n_banks, Memory &memory) {
