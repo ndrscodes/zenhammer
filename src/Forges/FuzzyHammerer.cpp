@@ -9,6 +9,7 @@
 #include "Fuzzer/PatternBuilder.hpp"
 #include "Memory/DRAMConfig.hpp"
 #include "Utilities/TimeHelper.hpp"
+#include <functional>
 #include <random>
 #include <thread>
 #include <vector>
@@ -123,7 +124,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
       // we test this combination of (pattern, mapping) at three different DRAM locations
       bool cancelled = false;
       std::vector<volatile char *> rows = generate_simple_pattern(gen, 2, 1, memory);
-      std::thread hammer_thread = std::thread(simple_hammer, &cancelled);
+      std::thread hammer_thread = std::thread(simple_hammer, std::ref(rows), std::ref(cancelled));
       probe_mapping_and_scan(mapper, memory, fuzzing_params, program_args.num_dram_locations_per_mapping);
       cancelled = true;
       hammer_thread.join();
