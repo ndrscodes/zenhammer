@@ -1,10 +1,52 @@
 #include "Forges/FuzzyHammerer.hpp"
 
+#include "Fuzzer/FuzzingParameterSet.hpp"
+#include "Fuzzer/PatternAddressMapper.hpp"
+#include "Memory/DRAMAddr.hpp"
+#include "Utilities/AsmPrimitives.hpp"
 #include "ZenHammer.hpp"
 #include "Forges/ReplayingHammerer.hpp"
 #include "Fuzzer/PatternBuilder.hpp"
 #include "Memory/DRAMConfig.hpp"
 #include "Utilities/TimeHelper.hpp"
+#include <random>
+#include <thread>
+#include <vector>
+
+void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled) {
+  Logger::log_info("[HAMMER TREAD] starting!");
+  
+  while(!cancelled) {
+    for(auto p : hammer_pattern) {
+      clflushopt(p);
+      *p;
+    }
+  }
+
+  Logger::log_info("[HAMMER THREAD] finished hammering.");
+}
+
+std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t n_aggressors_per_bank, size_t n_banks, Memory &memory) {
+  std::uniform_int_distribution<> row_dist(0, DRAMConfig::get().rows());
+  size_t banks = DRAMConfig::get().banks();
+  size_t current_bank = PatternAddressMapper::bank_counter;
+  std::vector<volatile char *> rows;
+  for(size_t i = 0; i < n_banks; i++) {
+    for(size_t j = 0; j < n_aggressors_per_bank; j++) {
+      while(rows.size() < n_aggressors_per_bank) {
+        volatile char *addr = (volatile char *)DRAMAddr((current_bank + i + 1) % banks, row_dist(rand), 0).to_virt();
+        if(addr < memory.get_starting_address() + DRAMConfig::get().row_to_row_offset() 
+          || addr > memory.get_starting_address() + memory.get_allocation_size() - DRAMConfig::get().row_to_row_offset()) {
+          continue;
+        }
+
+        rows.push_back(addr);
+      }
+    }
+  }
+
+  return rows;
+}
 
 // initialize the static variables
 size_t FuzzyHammerer::cnt_pattern_probes = 0UL;
@@ -79,7 +121,13 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
 //          current_round, hammering_pattern.instance_id.c_str(), cnt_pattern_probes, mapper.get_instance_id().c_str()));
 //
       // we test this combination of (pattern, mapping) at three different DRAM locations
+      bool cancelled = false;
+      std::vector<volatile char *> rows = generate_simple_pattern(gen, 2, 1, memory);
+      std::thread hammer_thread = std::thread(simple_hammer, &cancelled);
       probe_mapping_and_scan(mapper, memory, fuzzing_params, program_args.num_dram_locations_per_mapping);
+      cancelled = true;
+      hammer_thread.join();
+
       auto bit_flips_this_mapping = mapper.count_bitflips();
       sum_flips_one_pattern_all_mappings += bit_flips_this_mapping;
 
