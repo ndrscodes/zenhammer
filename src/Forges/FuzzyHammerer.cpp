@@ -4,6 +4,7 @@
 #include "Fuzzer/PatternAddressMapper.hpp"
 #include "Memory/DRAMAddr.hpp"
 #include "Utilities/AsmPrimitives.hpp"
+#include "Utilities/Logger.hpp"
 #include "ZenHammer.hpp"
 #include "Forges/ReplayingHammerer.hpp"
 #include "Fuzzer/PatternBuilder.hpp"
@@ -13,6 +14,9 @@
 #include <random>
 #include <thread>
 #include <vector>
+
+const size_t NUM_PARALLEL_BANKS = 1;
+const size_t NUM_PARALLEL_AGGS_PER_BANK = 2;
 
 size_t check(DRAMAddr victim, Memory &memory) {
   volatile char* start = (volatile char *)victim.to_virt();
@@ -147,7 +151,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
 
   const auto start_ts = get_timestamp_sec();
   const auto execution_time_limit = static_cast<int64_t>(start_ts + runtime_limit);
-
+  
   for (; get_timestamp_sec() < execution_time_limit; ++cnt_generated_patterns) {
     Logger::log_timestamp();
     Logger::log_highlight(format_string("Generating hammering pattern #%lu.", cnt_generated_patterns));
@@ -176,7 +180,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
 //
       // we test this combination of (pattern, mapping) at three different DRAM locations
       bool cancelled = false;
-      std::vector<volatile char *> rows = generate_simple_pattern(gen, 2, 1, memory);
+      std::vector<volatile char *> rows = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
       std::thread hammer_thread = std::thread(simple_hammer, std::ref(rows), std::ref(memory), std::ref(cancelled));
       probe_mapping_and_scan(mapper, memory, fuzzing_params, program_args.num_dram_locations_per_mapping);
       cancelled = true;
@@ -237,6 +241,14 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
     Logger::log_info("Skipping post-analysis stage as no effective patterns were found.");
   } else {
     Logger::log_info("Starting post-analysis stage.");
+    Logger::log_info("Analyzing entire memory to make sure we did not miss any flips...");
+    auto bitflips = memory.check_memory(memory.get_starting_address(), memory.get_starting_address() + memory.get_allocation_size());
+    if (bitflips > 0) {
+      Logger::log_highlight(format_string(
+        "Found %zu bitflips while scanning entire memory. Since we are normally restoring the memory if we found a flip, this means we have\n"
+        "likely found flips in addresses that were never scanned during the run!",
+        bitflips));
+    }
   }
 
 #ifdef ENABLE_JSON
@@ -285,7 +297,18 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
       mapping.remap_aggressors(sweep_start);
 
       // do the minisweep
+      std::vector<volatile char *> aggressors = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
+      bool cancelled = false;
+      std::thread hammer_thread(simple_hammer, std::ref(aggressors), std::ref(memory), std::ref(cancelled));
+      SweepSummary threaded_summary = replaying_hammerer.sweep_pattern(patt, mapping, 10, MINISWEEP_ROWS, {});
+      cancelled = true;
+      hammer_thread.join();
       SweepSummary summary = replaying_hammerer.sweep_pattern(patt, mapping, 10, MINISWEEP_ROWS, {});
+
+      if(threaded_summary.observed_bitflips.size() > summary.observed_bitflips.size()) {
+        Logger::log_success(format_string("we found %lu flips in the threaded summary vs just %lu flips without threading!"));
+        summary = threaded_summary;
+      }
 
       PatternMappingStat pms {
         .pattern = &patt,
@@ -340,7 +363,19 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
 
   // do sweep
   replaying_hammerer.set_params(fuzzing_params);
-  replaying_hammerer.replay_patterns_brief({ best_pattern }, FULL_SWEEP_ROWS, 1, true);
+
+  std::vector<volatile char *> aggressors = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
+  bool cancelled = false;
+  std::thread hammer_thread(simple_hammer, std::ref(aggressors), std::ref(memory), std::ref(cancelled));
+  auto thread_count = replaying_hammerer.replay_patterns_brief({ best_pattern }, FULL_SWEEP_ROWS, 1, true);
+  cancelled = true;
+  hammer_thread.join();
+  
+  auto count = replaying_hammerer.replay_patterns_brief({ best_pattern }, FULL_SWEEP_ROWS, 1, true);
+  
+  if(thread_count > count) {
+    Logger::log_success(format_string("found %lu flips using threading while the normal fuzzing run only produced %lu!", thread_count, count));
+  }
 }
 
 void FuzzyHammerer::test_location_dependence(ReplayingHammerer &rh, HammeringPattern &pattern) {
