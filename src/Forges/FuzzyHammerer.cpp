@@ -14,7 +14,44 @@
 #include <thread>
 #include <vector>
 
-void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled) {
+size_t check(DRAMAddr victim, Memory &memory) {
+  volatile char* start = (volatile char *)victim.to_virt();
+  volatile char* end = start + DRAMConfig::get().row_to_row_offset();
+  //we need to do these checks here because we only know that the aggressor lies within the allocated space.
+  //however, victims are purely based on speculation.
+  if(start < memory.get_starting_address() || start > memory.get_starting_address() + memory.get_allocation_size()) {
+    return 0;
+  }
+  if(end < memory.get_starting_address() || end > memory.get_starting_address() + memory.get_allocation_size()) {
+    return 0;
+  }
+
+  return memory.check_memory(start, end);
+}
+
+size_t check_flip_simple(volatile char *aggressor, Memory &memory) {
+  DRAMAddr accessed_addr((void *)aggressor);
+  size_t flipped_bits = 0;
+  //check 5 rows around the aggressor as defined in PatternAddressMapper::determine_victims.
+  const int ROW_THRESHOLD = 5;
+  for(int i = -ROW_THRESHOLD; i <= ROW_THRESHOLD; i++) {
+    if(i == 0) {
+      continue;
+    }
+
+    int victim_row = static_cast<int>(accessed_addr.row) - i;
+    if(victim_row < 0) {
+      continue;
+    }
+    DRAMAddr victim(accessed_addr.bank, static_cast<size_t>(victim_row), 0);
+
+    flipped_bits += check(victim, memory);
+  }
+
+  return flipped_bits;
+}
+
+void simple_hammer(std::vector<volatile char *> &hammer_pattern, Memory &memory, bool &cancelled) {
   Logger::log_info("[HAMMER TREAD] starting!");
 
   size_t acts = 0;
@@ -26,7 +63,23 @@ void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled
     }
   }
 
+  //FIXME: this currently does not consider victims that are less than 10 rows appart. In that case, flips will be counted twice.
+  //this should be fixed if it becomes a problem. Maybe simply keep track of the victims that have already been checked?
+  size_t flips = 0;
+  for(auto p : hammer_pattern) {
+    size_t current_flips = check_flip_simple(p, memory);
+    if(current_flips > 0) {
+      Logger::log_success(format_string("[HAMMER THREAD] found %lu flips for %s.", 
+                                        current_flips, 
+                                        DRAMAddr((void *)p).to_string().c_str()));
+      flips += current_flips;
+    }
+  }
+
   Logger::log_info(format_string("[HAMMER THREAD] finished hammering. managed to create %lu activations", acts));
+  if(flips > 0) {
+    Logger::log_success(format_string("[HAMMER THREAD] managed to flip %lu bits.", flips));
+  }
 }
 
 std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t n_aggressors_per_bank, size_t n_banks, Memory &memory) {
@@ -35,16 +88,14 @@ std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t 
   size_t current_bank = PatternAddressMapper::bank_counter;
   std::vector<volatile char *> rows;
   for(size_t i = 0; i < n_banks; i++) {
-    for(size_t j = 0; j < n_aggressors_per_bank; j++) {
-      while(rows.size() < n_aggressors_per_bank) {
-        volatile char *addr = (volatile char *)DRAMAddr((current_bank + i + 1) % banks, row_dist(rand), 0).to_virt();
-        if(addr < memory.get_starting_address() + DRAMConfig::get().row_to_row_offset() 
-          || addr > memory.get_starting_address() + memory.get_allocation_size() - DRAMConfig::get().row_to_row_offset()) {
-          continue;
-        }
-
-        rows.push_back(addr);
+    while(rows.size() < n_aggressors_per_bank) {
+      volatile char *addr = (volatile char *)DRAMAddr((current_bank + i + 1) % banks, row_dist(rand), 0).to_virt();
+      if(addr < memory.get_starting_address() + DRAMConfig::get().row_to_row_offset() 
+        || addr > memory.get_starting_address() + memory.get_allocation_size() - DRAMConfig::get().row_to_row_offset()) {
+        continue;
       }
+
+      rows.push_back(addr);
     }
   }
 
@@ -126,7 +177,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
       // we test this combination of (pattern, mapping) at three different DRAM locations
       bool cancelled = false;
       std::vector<volatile char *> rows = generate_simple_pattern(gen, 2, 1, memory);
-      std::thread hammer_thread = std::thread(simple_hammer, std::ref(rows), std::ref(cancelled));
+      std::thread hammer_thread = std::thread(simple_hammer, std::ref(rows), std::ref(memory), std::ref(cancelled));
       probe_mapping_and_scan(mapper, memory, fuzzing_params, program_args.num_dram_locations_per_mapping);
       cancelled = true;
       hammer_thread.join();
