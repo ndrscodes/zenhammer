@@ -56,7 +56,7 @@ size_t check_flip_simple(volatile char *aggressor, Memory &memory) {
 }
 
 void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled) {
-  printf("[HAMMER TREAD] starting!\n");
+  Logger::log_info("[HAMMER TREAD] starting!");
 
   size_t acts = 0;
   while(!cancelled) {
@@ -66,7 +66,7 @@ void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled
       acts++;
     }
   }
-  printf("[HAMMER THREAD] finished hammering. managed to create %lu activations\n", acts);
+  Logger::log_info(format_string("[HAMMER THREAD] finished hammering. managed to create %lu activations", acts));
 }
 
 std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t n_aggressors_per_bank, size_t n_banks, size_t mapper_bank_offset, Memory &memory) {
