@@ -280,6 +280,14 @@ int FuzzingParameterSet::get_num_refresh_intervals() const {
   return num_refresh_intervals;
 }
 
+int FuzzingParameterSet::get_bank_change_percentage() {
+  return bank_change_percentage;
+}
+
+void FuzzingParameterSet::set_bank_change_percentage(float_t percentage) {
+  bank_change_percentage = percentage;
+}
+
 void FuzzingParameterSet::set_total_acts_pattern(int pattern_total_acts) {
   FuzzingParameterSet::total_acts_pattern = pattern_total_acts;
 }

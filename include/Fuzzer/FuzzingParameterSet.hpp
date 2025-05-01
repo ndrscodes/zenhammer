@@ -62,6 +62,8 @@ class FuzzingParameterSet {
 
   void set_distribution(Range<int> range_N_sided, std::unordered_map<int, int> probabilities);
 
+  float_t bank_change_percentage = 0.;
+
  public:
   FuzzingParameterSet();
 
@@ -132,6 +134,10 @@ class FuzzingParameterSet {
   void set_acts_per_trefi(int acts_per_trefi);
 
   void set_fixed_acts_per_trefi(int fixed_acts_per_trefi);
+
+  int get_bank_change_percentage();
+  
+  void set_bank_change_percentage(float_t percentage);
 };
 
 #endif //BLACKSMITH_INCLUDE_FUZZER_FUZZINGPARAMETERSET_HPP_
