@@ -69,14 +69,14 @@ void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled
   Logger::log_info(format_string("[HAMMER THREAD] finished hammering. managed to create %lu activations", acts));
 }
 
-std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t n_aggressors_per_bank, size_t n_banks, Memory &memory) {
+std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t n_aggressors_per_bank, size_t n_banks, size_t mapper_bank_offset, Memory &memory) {
   std::uniform_int_distribution<> row_dist(0, DRAMConfig::get().rows());
   size_t banks = DRAMConfig::get().banks();
   size_t current_bank = PatternAddressMapper::bank_counter;
   std::vector<volatile char *> rows;
   for(size_t i = 0; i < n_banks; i++) {
     while(rows.size() < n_aggressors_per_bank) {
-      volatile char *addr = (volatile char *)DRAMAddr((current_bank + i + 1) % banks, row_dist(rand), 0).to_virt();
+      volatile char *addr = (volatile char *)DRAMAddr((current_bank + i + mapper_bank_offset) % banks, row_dist(rand), 0).to_virt();
       if(addr < memory.get_starting_address() + DRAMConfig::get().row_to_row_offset() 
         || addr > memory.get_starting_address() + memory.get_allocation_size() - DRAMConfig::get().row_to_row_offset()) {
         continue;
@@ -163,11 +163,26 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
 //
       // we test this combination of (pattern, mapping) at three different DRAM locations
       bool cancelled = false;
-      std::vector<volatile char *> rows = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
+      std::vector<volatile char *> rows = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, 4, memory);
       std::thread hammer_thread = std::thread(simple_hammer, std::ref(rows), std::ref(cancelled));
       probe_mapping_and_scan(mapper, memory, fuzzing_params, program_args.num_dram_locations_per_mapping);
       cancelled = true;
       hammer_thread.join();
+      //FIXME: this currently does not consider victims that are less than 10 rows appart. In that case, flips will be counted twice.
+      //this should be fixed if it becomes a problem. Maybe simply keep track of the victims that have already been checked?
+      size_t flips = 0;
+      for(auto p : rows) {
+        size_t current_flips = check_flip_simple(p, memory);
+        if(current_flips > 0) {
+          Logger::log_success(format_string("[HAMMER THREAD] found %lu flips for %s.", 
+                                            current_flips, 
+                                            DRAMAddr((void *)p).to_string().c_str()));
+          flips += current_flips;
+        }
+      }
+      if(flips > 0) {
+        Logger::log_success(format_string("[HAMMER THREAD] managed to flip %lu bits.", flips));
+      }
 
       auto bit_flips_this_mapping = mapper.count_bitflips();
       sum_flips_one_pattern_all_mappings += bit_flips_this_mapping;
@@ -280,7 +295,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
       mapping.remap_aggressors(sweep_start);
 
       // do the minisweep
-      std::vector<volatile char *> aggressors = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
+      std::vector<volatile char *> aggressors = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, 3, memory);
       bool cancelled = false;
       std::thread hammer_thread(simple_hammer, std::ref(aggressors), std::ref(cancelled));
       SweepSummary threaded_summary = replaying_hammerer.sweep_pattern(patt, mapping, 10, MINISWEEP_ROWS, {});
@@ -364,7 +379,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
   // do sweep
   replaying_hammerer.set_params(fuzzing_params);
 
-  std::vector<volatile char *> aggressors = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
+  std::vector<volatile char *> aggressors = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, 3, memory);
   bool cancelled = false;
   std::thread hammer_thread(simple_hammer, std::ref(aggressors), std::ref(cancelled));
   auto thread_count = replaying_hammerer.replay_patterns_brief({ best_pattern }, FULL_SWEEP_ROWS, 1, true);
