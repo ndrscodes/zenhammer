@@ -56,7 +56,7 @@ size_t check_flip_simple(volatile char *aggressor, Memory &memory) {
 }
 
 void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled) {
-  Logger::log_info("[HAMMER TREAD] starting!");
+  printf("[HAMMER TREAD] starting!\n");
 
   size_t acts = 0;
   while(!cancelled) {
@@ -66,7 +66,7 @@ void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled
       acts++;
     }
   }
-  Logger::log_info(format_string("[HAMMER THREAD] finished hammering. managed to create %lu activations", acts));
+  printf("[HAMMER THREAD] finished hammering. managed to create %lu activations\n", acts);
 }
 
 std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t n_aggressors_per_bank, size_t n_banks, size_t mapper_bank_offset, Memory &memory) {
@@ -75,10 +75,11 @@ std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t 
   size_t current_bank = PatternAddressMapper::bank_counter;
   std::vector<volatile char *> rows;
   for(size_t i = 0; i < n_banks; i++) {
-    while(rows.size() < n_aggressors_per_bank) {
+    for(size_t j = 0; j < n_aggressors_per_bank; j++) {
       volatile char *addr = (volatile char *)DRAMAddr((current_bank + i + mapper_bank_offset) % banks, row_dist(rand), 0).to_virt();
       if(addr < memory.get_starting_address() + DRAMConfig::get().row_to_row_offset() 
         || addr > memory.get_starting_address() + memory.get_allocation_size() - DRAMConfig::get().row_to_row_offset()) {
+        j--;
         continue;
       }
 

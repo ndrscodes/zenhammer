@@ -84,6 +84,7 @@ size_t Memory::check_memory(const volatile char *start, const volatile char *end
   flipped_bits.clear();
   // create a "fake" pattern mapping to keep this method for backward compatibility
   PatternAddressMapper pattern_mapping;
+  pattern_mapping.bit_flips.emplace_back();
   return check_memory_internal(pattern_mapping, start, end, false, true);
 }
 
