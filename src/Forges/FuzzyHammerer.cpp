@@ -23,10 +23,10 @@ size_t check(DRAMAddr victim, Memory &memory) {
   volatile char* end = start + DRAMConfig::get().row_to_row_offset();
   //we need to do these checks here because we only know that the aggressor lies within the allocated space.
   //however, victims are purely based on speculation.
-  if(start < memory.get_starting_address() || start > memory.get_starting_address() + memory.get_allocation_size()) {
+  if(start < memory.get_starting_address() || start >= memory.get_starting_address() + memory.get_allocation_size()) {
     return 0;
   }
-  if(end < memory.get_starting_address() || end > memory.get_starting_address() + memory.get_allocation_size()) {
+  if(end < memory.get_starting_address() || end >= memory.get_starting_address() + memory.get_allocation_size()) {
     return 0;
   }
 
@@ -55,7 +55,7 @@ size_t check_flip_simple(volatile char *aggressor, Memory &memory) {
   return flipped_bits;
 }
 
-void simple_hammer(std::vector<volatile char *> &hammer_pattern, Memory &memory, bool &cancelled) {
+void simple_hammer(std::vector<volatile char *> &hammer_pattern, bool &cancelled) {
   Logger::log_info("[HAMMER TREAD] starting!");
 
   size_t acts = 0;
@@ -66,24 +66,7 @@ void simple_hammer(std::vector<volatile char *> &hammer_pattern, Memory &memory,
       acts++;
     }
   }
-
-  //FIXME: this currently does not consider victims that are less than 10 rows appart. In that case, flips will be counted twice.
-  //this should be fixed if it becomes a problem. Maybe simply keep track of the victims that have already been checked?
-  size_t flips = 0;
-  for(auto p : hammer_pattern) {
-    size_t current_flips = check_flip_simple(p, memory);
-    if(current_flips > 0) {
-      Logger::log_success(format_string("[HAMMER THREAD] found %lu flips for %s.", 
-                                        current_flips, 
-                                        DRAMAddr((void *)p).to_string().c_str()));
-      flips += current_flips;
-    }
-  }
-
   Logger::log_info(format_string("[HAMMER THREAD] finished hammering. managed to create %lu activations", acts));
-  if(flips > 0) {
-    Logger::log_success(format_string("[HAMMER THREAD] managed to flip %lu bits.", flips));
-  }
 }
 
 std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t n_aggressors_per_bank, size_t n_banks, Memory &memory) {
@@ -181,7 +164,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
       // we test this combination of (pattern, mapping) at three different DRAM locations
       bool cancelled = false;
       std::vector<volatile char *> rows = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
-      std::thread hammer_thread = std::thread(simple_hammer, std::ref(rows), std::ref(memory), std::ref(cancelled));
+      std::thread hammer_thread = std::thread(simple_hammer, std::ref(rows), std::ref(cancelled));
       probe_mapping_and_scan(mapper, memory, fuzzing_params, program_args.num_dram_locations_per_mapping);
       cancelled = true;
       hammer_thread.join();
@@ -299,11 +282,28 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
       // do the minisweep
       std::vector<volatile char *> aggressors = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
       bool cancelled = false;
-      std::thread hammer_thread(simple_hammer, std::ref(aggressors), std::ref(memory), std::ref(cancelled));
+      std::thread hammer_thread(simple_hammer, std::ref(aggressors), std::ref(cancelled));
       SweepSummary threaded_summary = replaying_hammerer.sweep_pattern(patt, mapping, 10, MINISWEEP_ROWS, {});
       cancelled = true;
       hammer_thread.join();
       SweepSummary summary = replaying_hammerer.sweep_pattern(patt, mapping, 10, MINISWEEP_ROWS, {});
+      
+      //FIXME: this currently does not consider victims that are less than 10 rows appart. In that case, flips will be counted twice.
+      //this should be fixed if it becomes a problem. Maybe simply keep track of the victims that have already been checked?
+      size_t flips = 0;
+      for(auto p : aggressors) {
+        size_t current_flips = check_flip_simple(p, memory);
+        if(current_flips > 0) {
+          Logger::log_success(format_string("[HAMMER THREAD] found %lu flips for %s.", 
+                                            current_flips, 
+                                            DRAMAddr((void *)p).to_string().c_str()));
+          flips += current_flips;
+        }
+      }
+      if(flips > 0) {
+        Logger::log_success(format_string("[HAMMER THREAD] managed to flip %lu bits.", flips));
+      }
+
 
       if(threaded_summary.observed_bitflips.size() > summary.observed_bitflips.size()) {
         Logger::log_success(format_string("we found %lu flips in the threaded summary vs just %lu flips without threading!"));
@@ -366,10 +366,25 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
 
   std::vector<volatile char *> aggressors = generate_simple_pattern(gen, NUM_PARALLEL_AGGS_PER_BANK, NUM_PARALLEL_BANKS, memory);
   bool cancelled = false;
-  std::thread hammer_thread(simple_hammer, std::ref(aggressors), std::ref(memory), std::ref(cancelled));
+  std::thread hammer_thread(simple_hammer, std::ref(aggressors), std::ref(cancelled));
   auto thread_count = replaying_hammerer.replay_patterns_brief({ best_pattern }, FULL_SWEEP_ROWS, 1, true);
   cancelled = true;
   hammer_thread.join();
+  //FIXME: this currently does not consider victims that are less than 10 rows appart. In that case, flips will be counted twice.
+  //this should be fixed if it becomes a problem. Maybe simply keep track of the victims that have already been checked?
+  size_t flips = 0;
+  for(auto p : aggressors) {
+    size_t current_flips = check_flip_simple(p, memory);
+    if(current_flips > 0) {
+      Logger::log_success(format_string("[HAMMER THREAD] found %lu flips for %s.", 
+                                        current_flips, 
+                                        DRAMAddr((void *)p).to_string().c_str()));
+      flips += current_flips;
+    }
+  }
+  if(flips > 0) {
+    Logger::log_success(format_string("[HAMMER THREAD] managed to flip %lu bits.", flips));
+  }
   
   auto count = replaying_hammerer.replay_patterns_brief({ best_pattern }, FULL_SWEEP_ROWS, 1, true);
   
