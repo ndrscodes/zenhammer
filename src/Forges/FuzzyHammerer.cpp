@@ -10,6 +10,7 @@
 #include "Fuzzer/PatternBuilder.hpp"
 #include "Memory/DRAMConfig.hpp"
 #include "Utilities/TimeHelper.hpp"
+#include <cstddef>
 #include <functional>
 #include <random>
 #include <thread>
@@ -33,23 +34,31 @@ size_t check(DRAMAddr victim, Memory &memory) {
   return memory.check_memory(start, end);
 }
 
-size_t check_flip_simple(volatile char *aggressor, Memory &memory) {
-  DRAMAddr accessed_addr((void *)aggressor);
+size_t check_flip_simple(std::vector<volatile char *> &aggressors, Memory &memory) {
   size_t flipped_bits = 0;
+  std::set<int> checked;
   //check 5 rows around the aggressor as defined in PatternAddressMapper::determine_victims.
-  const int ROW_THRESHOLD = 5;
-  for(int i = -ROW_THRESHOLD; i <= ROW_THRESHOLD; i++) {
-    if(i == 0) {
-      continue;
-    }
+  for(auto aggressor : aggressors) {
+    DRAMAddr accessed_addr((void *)aggressor);
+    const int ROW_THRESHOLD = 5;
+    for(int i = -ROW_THRESHOLD; i <= ROW_THRESHOLD; i++) {
+      if(i == 0) {
+        continue;
+      }
 
-    int victim_row = static_cast<int>(accessed_addr.row) - i;
-    if(victim_row < 0) {
-      continue;
-    }
-    DRAMAddr victim(accessed_addr.bank, static_cast<size_t>(victim_row), 0);
+      int victim_row = static_cast<int>(accessed_addr.row) - i;
+      if(victim_row < 0) {
+        continue;
+      }
+      DRAMAddr victim(accessed_addr.bank, static_cast<size_t>(victim_row), 0);
 
-    flipped_bits += check(victim, memory);
+      if(checked.contains(victim_row)) {
+        continue;
+      }
+
+      flipped_bits += check(victim, memory);
+      checked.insert(victim_row);
+    }
   }
 
   return flipped_bits;
@@ -76,7 +85,8 @@ std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t 
   std::vector<volatile char *> rows;
   for(size_t i = 0; i < n_banks; i++) {
     for(size_t j = 0; j < n_aggressors_per_bank; j++) {
-      volatile char *addr = (volatile char *)DRAMAddr((current_bank + i + mapper_bank_offset) % banks, row_dist(rand), 0).to_virt();
+      DRAMAddr dram_addr((current_bank + i + mapper_bank_offset) % banks, row_dist(rand), 0);
+      volatile char *addr = (volatile char *)dram_addr.to_virt();
       if(addr < memory.get_starting_address() + DRAMConfig::get().row_to_row_offset() 
         || addr > memory.get_starting_address() + memory.get_allocation_size() - DRAMConfig::get().row_to_row_offset()) {
         j--;
@@ -84,6 +94,15 @@ std::vector<volatile char *> generate_simple_pattern(std::mt19937 &rand, size_t 
       }
 
       rows.push_back(addr);
+
+      DRAMAddr second = dram_addr.add(0, 2, 0);
+      addr = (volatile char *)second.to_virt();
+      if(addr < memory.get_starting_address() + DRAMConfig::get().row_to_row_offset() 
+        || addr > memory.get_starting_address() + memory.get_allocation_size() - DRAMConfig::get().row_to_row_offset()) {
+        continue;
+      }
+      rows.push_back(addr);
+      j++;
     }
   }
 
@@ -169,18 +188,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
       probe_mapping_and_scan(mapper, memory, fuzzing_params, program_args.num_dram_locations_per_mapping);
       cancelled = true;
       hammer_thread.join();
-      //FIXME: this currently does not consider victims that are less than 10 rows appart. In that case, flips will be counted twice.
-      //this should be fixed if it becomes a problem. Maybe simply keep track of the victims that have already been checked?
-      size_t flips = 0;
-      for(auto p : rows) {
-        size_t current_flips = check_flip_simple(p, memory);
-        if(current_flips > 0) {
-          Logger::log_success(format_string("[HAMMER THREAD] found %lu flips for %s.", 
-                                            current_flips, 
-                                            DRAMAddr((void *)p).to_string().c_str()));
-          flips += current_flips;
-        }
-      }
+      size_t flips = check_flip_simple(rows, memory);
       if(flips > 0) {
         Logger::log_success(format_string("[HAMMER THREAD] managed to flip %lu bits.", flips));
       }
@@ -304,25 +312,16 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
       hammer_thread.join();
       SweepSummary summary = replaying_hammerer.sweep_pattern(patt, mapping, 10, MINISWEEP_ROWS, {});
       
-      //FIXME: this currently does not consider victims that are less than 10 rows appart. In that case, flips will be counted twice.
-      //this should be fixed if it becomes a problem. Maybe simply keep track of the victims that have already been checked?
-      size_t flips = 0;
-      for(auto p : aggressors) {
-        size_t current_flips = check_flip_simple(p, memory);
-        if(current_flips > 0) {
-          Logger::log_success(format_string("[HAMMER THREAD] found %lu flips for %s.", 
-                                            current_flips, 
-                                            DRAMAddr((void *)p).to_string().c_str()));
-          flips += current_flips;
-        }
-      }
+
+      size_t flips = check_flip_simple(aggressors, memory);
       if(flips > 0) {
         Logger::log_success(format_string("[HAMMER THREAD] managed to flip %lu bits.", flips));
       }
 
-
       if(threaded_summary.observed_bitflips.size() > summary.observed_bitflips.size()) {
-        Logger::log_success(format_string("we found %lu flips in the threaded summary vs just %lu flips without threading!"));
+        Logger::log_success(format_string("we found %lu flips in the threaded summary vs just %lu flips without threading!",
+                            threaded_summary.observed_bitflips.size()),
+                            summary.observed_bitflips.size());
         summary = threaded_summary;
       }
 
@@ -386,18 +385,7 @@ void FuzzyHammerer::n_sided_frequency_based_hammering(DramAnalyzer &dramAnalyzer
   auto thread_count = replaying_hammerer.replay_patterns_brief({ best_pattern }, FULL_SWEEP_ROWS, 1, true);
   cancelled = true;
   hammer_thread.join();
-  //FIXME: this currently does not consider victims that are less than 10 rows appart. In that case, flips will be counted twice.
-  //this should be fixed if it becomes a problem. Maybe simply keep track of the victims that have already been checked?
-  size_t flips = 0;
-  for(auto p : aggressors) {
-    size_t current_flips = check_flip_simple(p, memory);
-    if(current_flips > 0) {
-      Logger::log_success(format_string("[HAMMER THREAD] found %lu flips for %s.", 
-                                        current_flips, 
-                                        DRAMAddr((void *)p).to_string().c_str()));
-      flips += current_flips;
-    }
-  }
+  size_t flips = check_flip_simple(aggressors, memory);
   if(flips > 0) {
     Logger::log_success(format_string("[HAMMER THREAD] managed to flip %lu bits.", flips));
   }
